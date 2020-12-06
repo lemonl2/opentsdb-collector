@@ -1,0 +1,24 @@
+collector:
+  host: localhost
+  port: 8666
+
+spring:
+  application:
+    name: collector
+  threadPool:
+    #指定最大线程数
+    maximumPoolSize: 20
+    #线程空闲时最长存活的时间，单位是分钟
+    keepAliveTime: 20
+    #则是线程池的缓冲队列,还未执行的线程会在队列中等待,队列满之后会创建新线程执行任务，但不能超过最大线程数
+    workQueue: 100
+
+
+logging.file: ./logs/${spring.application.name}.log
+
+logging:
+  file:
+    max-history: 10
+  level:
+    root: INFO
+    com.eoi.collector: INFO

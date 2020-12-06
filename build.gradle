@@ -1,0 +1,112 @@
+plugins {
+    id 'java'
+    id 'idea'
+    id 'org.springframework.boot' version '2.0.5.RELEASE'
+    id 'io.spring.dependency-management' version '1.0.9.RELEASE'
+    id 'distribution'
+    id "org.hidetake.ssh" version '2.10.1'
+}
+
+group 'com.eoi'
+version '1.0.0'
+
+repositories {
+    mavenLocal()
+    mavenCentral()
+}
+
+dependencies {
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    testCompile group: 'junit', name: 'junit', version: '4.12'
+    compile group: 'io.springfox', name: 'springfox-swagger2', version: '2.9.2'
+    compile group: 'io.springfox', name: 'springfox-swagger-ui', version: '2.9.2'
+    compile group: 'cn.hutool', name: 'hutool-all', version: '5.2.3'
+    compile group: 'com.alibaba', name: 'fastjson', version: '1.2.71'
+    compile group: 'org.apache.kafka', name: 'kafka-clients', version: '2.5.0'
+
+    annotationProcessor group: 'org.projectlombok', name: 'lombok', version: '1.18.12'
+    compileOnly group: 'org.projectlombok', name: 'lombok', version: '1.18.12'
+}
+
+
+// task 用来新建一些目录，目录位于build/package下
+task createDirs()  {
+    doFirst {
+        file('build/package').mkdirs()
+        file('build/package/logs').mkdirs()
+    }
+}
+
+//task 用来复制build出来的主jar包
+task copyLibs(type: Copy) {
+    from('build/libs')
+    into('build/package')
+}
+
+//task 用来复制配置文件
+task copyConf(type: Copy) {
+    from('package/config')
+    into('build/package')
+}
+
+//task 用来复制bin下的脚本。这里的fileMode并没有生效，原因不详
+task copyBin(type: Copy) {
+    from('package/bin')
+    into('build/package')
+    fileMode 0744
+}
+
+task prepareFile(dependsOn: [
+        createDirs,
+        copyLibs,
+        copyConf,
+        copyBin
+])
+
+distributions {
+    monitor {
+        getDistributionBaseName().set('opentsdb-collector-' + new Date().format("yyyyMMdd"))
+        contents {
+            from {'build/package'}
+        }
+    }
+}
+
+monitorDistTar.dependsOn('prepareFile')
+monitorDistTar.compression(Compression.GZIP)
+monitorDistTar.extension('tar.gz')
+
+//定义一个task，先build 然后再打包tar包
+task buildTar(dependsOn: [
+        build,
+        monitorDistTar
+]){}
+
+//定义发送到测试环境的部署
+remotes {
+    webServer {
+        host = '192.168.21.116'
+        user = 'root'
+        password = 'XXXX'
+//        identity = file('id_rsa')
+    }
+}
+
+task deploy(dependsOn: [buildTar]) {
+    doLast {
+        ssh.settings {
+            knownHosts = allowAnyHosts
+        }
+        ssh.run {
+            session(remotes.webServer) {
+                def url = '/data01/opentsdb-collector/'
+                put from: "${buildDir}/libs/opentsdb-collector-1.0.0.jar", into: "${url}"
+                execute """
+                   ${url}/restart.sh;
+                """
+            }
+        }
+    }
+}
